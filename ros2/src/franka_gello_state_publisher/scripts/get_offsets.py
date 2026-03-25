@@ -16,7 +16,7 @@ DEFAULT_BAUDRATE = 57600
 
 @dataclass
 class Args:
-    port: str = "/dev/ttyUSB0"
+    port: str = "/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FTA7NM3S-if00-port0"
     """The port that GELLO is connected to."""
 
     start_joints: Tuple[float, ...] = (0.0, 0.0, 0.0, -1.571, 0.0, 1.571, 0.0)

@@ -37,8 +37,10 @@ class GelloPublisher(Node):
             ParameterEvent, "/parameter_events", self.parameter_event_callback, 10
         )
 
+        self.get_logger().info(f"Gello arm joints: {self.gello_hardware._initial_arm_joints_raw}")
         self.get_logger().info("Publishing GELLO joint states.")
         self.timer = self.create_timer(1 / self.PUBLISHING_RATE, self.publish_joint_jog)
+        
 
     def parameter_event_callback(self, event: ParameterEvent) -> None:
         """Handle parameter change events for this node."""
@@ -64,7 +66,7 @@ class GelloPublisher(Node):
             "fr3_joint7",
         ]
         [gello_arm_joints, gripper_position] = self.gello_hardware.get_joint_and_gripper_positions()
-
+        # self.get_logger().info(f"Gello arm joints: {gello_arm_joints}, Gripper position: {gripper_position}")
         arm_joint_states = JointState()
         arm_joint_states.header.stamp = self.get_clock().now().to_msg()
         arm_joint_states.name = JOINT_NAMES

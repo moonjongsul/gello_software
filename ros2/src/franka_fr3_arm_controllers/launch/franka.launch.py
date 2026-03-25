@@ -209,12 +209,12 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "robot_ip",
-            default_value="172.16.0.3",
+            default_value="172.16.0.2",
             description="Hostname or IP address of the robot",
         ),
         DeclareLaunchArgument(
             "load_gripper",
-            default_value="false",
+            default_value="true",
             description="Use Franka Gripper as an end-effector",
         ),
         DeclareLaunchArgument(

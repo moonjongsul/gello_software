@@ -54,7 +54,7 @@ def generate_launch_description():
         [
             DeclareLaunchArgument(
                 "config_file",
-                default_value="example_single.yaml",
+                default_value="franka_gello_single.yaml",
                 description="Name of the gello configuration file to load",
             ),
             OpaqueFunction(function=generate_robot_nodes),

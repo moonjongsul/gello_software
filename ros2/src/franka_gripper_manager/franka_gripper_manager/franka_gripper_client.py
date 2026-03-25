@@ -1,16 +1,24 @@
 import rclpy
 import time
 from rclpy.node import Node
-from franka_msgs.action import Move
-from franka_msgs.action import Homing
+from franka_msgs.action import Move, Grasp, Homing
 from sensor_msgs.msg import JointState
 from rclpy.action import ActionClient
 from std_msgs.msg import Float32
 
 DEFAULT_MOVE_ACTION_TOPIC = "franka_gripper/move"
+DEFAULT_GRASP_ACTION_TOPIC = "franka_gripper/grasp"
 DEFAULT_HOMING_ACTION_TOPIC = "franka_gripper/homing"
 DEFAULT_JOINT_STATES_TOPIC = "franka_gripper/joint_states"
 DEFAULT_GRIPPER_COMMAND_TOPIC = "gripper/gripper_client/target_gripper_width_percent"
+
+OPEN_THRESHOLD = 0.8      # trigger 이 이상이면 open
+GRASP_FORCE = 10.0        # N — 조절 가능
+GRASP_SPEED = 0.1         # m/s
+OPEN_SPEED = 0.3          # m/s
+EPSILON_INNER = 0.08      # 3cm — 물건 두께 오차 허용 (넉넉하게)
+EPSILON_OUTER = 0.08
+MIN_SEND_INTERVAL = 0.1   # 10Hz
 
 
 class GripperClient(Node):
@@ -18,132 +26,137 @@ class GripperClient(Node):
         super().__init__("gripper_client")
 
         self.declare_parameter("move_action_topic", DEFAULT_MOVE_ACTION_TOPIC)
+        self.declare_parameter("grasp_action_topic", DEFAULT_GRASP_ACTION_TOPIC)
         self.declare_parameter("homing_action_topic", DEFAULT_HOMING_ACTION_TOPIC)
         self.declare_parameter("gripper_command_topic", DEFAULT_GRIPPER_COMMAND_TOPIC)
         self.declare_parameter("joint_states_topic", DEFAULT_JOINT_STATES_TOPIC)
 
-        move_action_topic = (
-            self.get_parameter("move_action_topic").get_parameter_value().string_value
-        )
-        homing_action_topic = (
-            self.get_parameter("homing_action_topic").get_parameter_value().string_value
-        )
-        gripper_command_topic = (
-            self.get_parameter("gripper_command_topic").get_parameter_value().string_value
-        )
-        joint_states_topic = (
-            self.get_parameter("joint_states_topic").get_parameter_value().string_value
-        )
+        move_action_topic = self.get_parameter("move_action_topic").get_parameter_value().string_value
+        grasp_action_topic = self.get_parameter("grasp_action_topic").get_parameter_value().string_value
+        homing_action_topic = self.get_parameter("homing_action_topic").get_parameter_value().string_value
+        gripper_command_topic = self.get_parameter("gripper_command_topic").get_parameter_value().string_value
+        joint_states_topic = self.get_parameter("joint_states_topic").get_parameter_value().string_value
 
         self._ACTION_SERVER_TIMEOUT = 10.0
-        self._MIN_GRIPPER_WIDTH_PERCENT = 0.0
-        self._MAX_GRIPPER_WIDTH_PERCENT = 1.0
-        self._gripper_command_transmitted = True
         self._max_width = 0.0
-        self._last_gripper_command = self._max_width * self._MAX_GRIPPER_WIDTH_PERCENT
+        self._current_goal_handle = None
+        self._last_state = None        # "open" or "grasp"
+        self._pending_trigger = None
+        self._last_send_time = 0.0
 
         self.get_logger().info("Initializing gripper client...")
         self._home_gripper(homing_action_topic)
         self._get_max_gripper_width(joint_states_topic)
 
-        self.get_logger().info("Subscribing to gripper commands...")
-        self._gripper_command_subscription = self.create_subscription(
-            Float32, gripper_command_topic, self._gripper_command_callback, 10
-        )
-        self._action_client = ActionClient(self, Move, move_action_topic)
+        self._move_client = ActionClient(self, Move, move_action_topic)
+        self._grasp_client = ActionClient(self, Grasp, grasp_action_topic)
 
-        self.get_logger().info("Waiting for gripper move action server...")
-        if not self._action_client.wait_for_server(timeout_sec=self._ACTION_SERVER_TIMEOUT):
-            raise RuntimeError(
-                f"Move action server not available after {self._ACTION_SERVER_TIMEOUT} seconds!"
-            )
+        if not self._move_client.wait_for_server(timeout_sec=self._ACTION_SERVER_TIMEOUT):
+            raise RuntimeError("Move action server not available!")
+        if not self._grasp_client.wait_for_server(timeout_sec=self._ACTION_SERVER_TIMEOUT):
+            raise RuntimeError("Grasp action server not available!")
 
-        self.get_logger().info("Gripper client initialized!")
+        self._sub = self.create_subscription(
+            Float32, gripper_command_topic, self._trigger_cb, 10)
 
-    def _home_gripper(self, homing_action_topic: str) -> None:
-        self.get_logger().info("Starting gripper homing...")
-        homing_client = ActionClient(self, Homing, homing_action_topic)
+        self.create_timer(MIN_SEND_INTERVAL, self._process_pending)
+        self.get_logger().info("Gripper client ready.")
 
-        self.get_logger().info(f"Waiting for homing action server {homing_action_topic}...")
-        if not homing_client.wait_for_server(timeout_sec=self._ACTION_SERVER_TIMEOUT):
-            raise RuntimeError(
-                f"Homing action server not available after {self._ACTION_SERVER_TIMEOUT} seconds!"
-            )
+    # ── homing / max_width (기존과 동일) ─────────────────────────────────
 
-        self.get_logger().info("Homing action server found!")
-        goal_msg = Homing.Goal()
-        future = homing_client.send_goal_async(goal_msg)
+    def _home_gripper(self, homing_action_topic):
+        client = ActionClient(self, Homing, homing_action_topic)
+        if not client.wait_for_server(timeout_sec=self._ACTION_SERVER_TIMEOUT):
+            raise RuntimeError("Homing server not available!")
+        future = client.send_goal_async(Homing.Goal())
         rclpy.spin_until_future_complete(self, future)
-
-        goal_handle = future.result()
-        if not goal_handle.accepted:
-            raise RuntimeError("Homing action rejected!")
-
-        result_future = goal_handle.get_result_async()
+        result_future = future.result().get_result_async()
         rclpy.spin_until_future_complete(self, result_future)
-        result = result_future.result()
         time.sleep(2)
 
-        if result.result.success:
-            self.get_logger().info("Gripper homing successful!")
+    def _get_max_gripper_width(self, joint_states_topic):
+        done = rclpy.task.Future()
+        def cb(msg):
+            self._max_width = 2 * msg.position[0]
+            done.set_result(True)
+        sub = self.create_subscription(JointState, joint_states_topic, cb, 10)
+        rclpy.spin_until_future_complete(self, done)
+        self.destroy_subscription(sub)
+        self.get_logger().info(f"Max width: {self._max_width:.4f} m")
+
+    # ── 핵심 로직 ─────────────────────────────────────────────────────────
+
+    def _trigger_cb(self, msg: Float32) -> None:
+        self._pending_trigger = float(msg.data)
+
+    def _process_pending(self) -> None:
+        if self._pending_trigger is None:
+            return
+
+        now = self.get_clock().now().nanoseconds / 1e9
+        if now - self._last_send_time < MIN_SEND_INTERVAL:
+            return
+
+        trigger = self._pending_trigger
+        self._pending_trigger = None
+
+        want_open = trigger >= OPEN_THRESHOLD
+
+        # 상태가 바뀔 때만 새 goal 전송
+        new_state = "open" if want_open else "grasp"
+        if new_state == self._last_state:
+            return
+
+        # 이전 goal cancel
+        if self._current_goal_handle is not None:
+            self._current_goal_handle.cancel_goal_async()
+            self._current_goal_handle = None
+
+        if want_open:
+            self._send_open()
         else:
-            raise RuntimeError("Gripper homing failed!")
+            self._send_grasp(trigger)
 
-    def _get_max_gripper_width(self, joint_states_topic: str) -> None:
-        self.get_logger().info("Readout maximum gripper width...")
-        future = rclpy.task.Future()
+        self._last_state = new_state
+        self._last_send_time = now
 
-        def joint_state_callback(msg):
-            _INDEX_FINGER_LEFT = 0
-            self._max_width = 2 * msg.position[_INDEX_FINGER_LEFT]
-            self.get_logger().info(f"Maximum gripper width determined: {self._max_width}")
-            future.set_result(True)
+    def _send_open(self) -> None:
+        goal = Move.Goal()
+        goal.width = self._max_width
+        goal.speed = OPEN_SPEED
+        self.get_logger().info("Gripper: OPEN")
+        f = self._move_client.send_goal_async(goal)
+        f.add_done_callback(self._on_goal_response)
 
-        self.get_logger().info(f"Subscribing to {joint_states_topic}...")
-        gripper_subscription = self.create_subscription(
-            JointState, joint_states_topic, joint_state_callback, 10
-        )
+    def _send_grasp(self, trigger: float) -> None:
+        goal = Grasp.Goal()
+        # trigger 0~0.5 → width 0~max/2 (선택적: 고정값 0.0 써도 됨)
+        goal.width = 0.0
+        goal.speed = GRASP_SPEED
+        goal.force = GRASP_FORCE
+        goal.epsilon.inner = EPSILON_INNER
+        goal.epsilon.outer = EPSILON_OUTER
+        self.get_logger().info(f"Gripper: GRASP (force={GRASP_FORCE}N)")
+        f = self._grasp_client.send_goal_async(goal)
+        f.add_done_callback(self._on_goal_response)
 
-        self.get_logger().info(f"Waiting for {joint_states_topic}...")
-        rclpy.spin_until_future_complete(self, future)
+    def _on_goal_response(self, future) -> None:
+        gh = future.result()
+        if not gh.accepted:
+            self.get_logger().warn("Goal rejected")
+            self._last_state = None  # 재시도 허용
+            return
+        self._current_goal_handle = gh
+        gh.get_result_async().add_done_callback(self._on_result)
 
-        self.get_logger().info(f"Unsubscribing from {joint_states_topic}")
-        self.destroy_subscription(gripper_subscription)
-
-    def _gripper_command_callback(self, msg: Float32) -> None:
-        new_open_width_percent = msg.data
-        new_open_width = self._max_width * new_open_width_percent
-        if self._gripper_command_transmitted and new_open_width != self._last_gripper_command:
-            self._send_gripper_command(new_open_width)
-            self._last_gripper_command = new_open_width
-            self._gripper_command_transmitted = False
-
-    def _send_gripper_command(self, gripper_position: float) -> None:
-        goal_msg = Move.Goal()
-        goal_msg.width = gripper_position
-        goal_msg.speed = 1.0
-        self._future = self._action_client.send_goal_async(goal_msg)
-        self._future.add_done_callback(self._gripper_response_callback)
-
-    def _gripper_response_callback(self, future: rclpy.task.Future) -> None:
-        goal_handle = future.result()
-
-        if not goal_handle.accepted:
-            raise RuntimeError(f"Goal rejected with status: {goal_handle.status}")
-
-        self._get_result_future = goal_handle.get_result_async()
-        self._get_result_future.add_done_callback(self._get_result_callback)
-
-    def _get_result_callback(self, future: rclpy.task.Future) -> None:
-        result = future.result().result
-        self.get_logger().info("Result: {0}".format(result))
-        self._gripper_command_transmitted = True
+    def _on_result(self, future) -> None:
+        self._current_goal_handle = None
 
 
 def main(args=None):
     rclpy.init(args=args)
-    gripper_client = GripperClient()
-    rclpy.spin(gripper_client)
+    node = GripperClient()
+    rclpy.spin(node)
     rclpy.shutdown()
 
 

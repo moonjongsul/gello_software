@@ -3,7 +3,7 @@
 
 SINGLE:
   namespace: ""
-  com_port: "usb-FTDI_USB__-__Serial_Converter_FT9MFR6C-if00-port0"
+  com_port: "usb-FTDI_USB__-__Serial_Converter_FTA7NM3S-if00-port0"
   num_arm_joints: 7
   joint_signs: [1, -1, 1, -1, 1, 1, 1]
   gripper: true
