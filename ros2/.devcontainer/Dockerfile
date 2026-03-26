@@ -65,5 +65,18 @@ mkdir -p /tmp/franka_ros2 && cd /tmp/franka_ros2 && \
   colcon build --install-base /opt/ros/humble/franka --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=off  && \
   cd .. && \ 
   rm -rf /tmp/franka_ros2 && \
+  echo "export PS1=\x27\[\e[1;31m\][gello]\[\e[0m\] \[\e[1;32m\]\u@\h\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]\$ \x27" >> ~/.bashrc && \
+  echo "export LS_COLORS=\x27di=1;97;42:ow=1;97;42:tw=1;97;42\x27" >> ~/.bashrc && \
+  echo "" >> ~/.bashrc && \
+  echo "export ROS_DOMAIN_ID=94" >> ~/.bashrc && \
   echo "source /opt/ros/humble/franka/setup.bash" >> ~/.bashrc && \
-  echo "source /opt/ros/humble/franka/setup.sh" >> ~/.profile'
+  echo "source /workspace/ros2/install/setup.bash" >> ~/.bashrc && \
+  echo "" >> ~/.bashrc && \
+  echo "alias eb=\x27nano ~/.bashrc\x27" >> ~/.bashrc && \
+  echo "alias sb=\x27source ~/.bashrc\x27" >> ~/.bashrc && \
+  echo "alias cm=\x27cd /workspace/ros2 && colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON\x27" >> ~/.bashrc && \
+  echo "" >> ~/.bashrc && \
+  echo "alias robot=\x27ros2 launch franka_fr3_arm_controllers franka_fr3_arm_controllers.launch.py\x27" >> ~/.bashrc && \
+  echo "alias gello=\x27ros2 launch franka_gello_state_publisher main.launch.py\x27" >> ~/.bashrc && \
+  echo "alias koras=\x27ros2 launch franka_gripper_manager koras_gripper_client.launch.py\x27" >> ~/.bashrc && \
+  echo "source /opt/ros/humble/franka/setup.bash" >> ~/.profile'
