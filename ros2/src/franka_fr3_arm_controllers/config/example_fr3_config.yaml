@@ -4,7 +4,7 @@ robot1:
   fake_sensor_commands: "false" 
   joint_sources: ["joint_states", "franka_gripper/joint_states"] 
   joint_state_rate: 30 
-  load_gripper: "true" 
+  load_gripper: "false" 
   namespace: ""
   robot_ip: "172.16.0.2" 
   urdf_file: "fr3/fr3.urdf.xacro" 
