@@ -34,19 +34,19 @@ class GripperControllerWrapper:
         self.client.close()
 
     def gripper_initialize(self):
-        self.client.write_register(0,101,slave=1)
+        self.client.write_register(0,101)
         time.sleep(0.1)
-        self.client.write_register(0,213,slave=1)
-        self.client.write_register(1,100,slave=1)
+        self.client.write_register(0,213)
+        self.client.write_register(1,100)
         time.sleep(0.1)
 
     def set_finger_position(self, position):
-        self.client.write_register(0, 104, slave=1)
-        self.client.write_register(1, position, slave=1)  # 목표 값 설정
+        self.client.write_register(0, 104)
+        self.client.write_register(1, position)  # 목표 값 설정
 
     def set_motor_torque(self,ratio):
-        self.client.write_register(0,212, slave=1)
-        self.client.write_register(1,ratio,slave=1)
+        self.client.write_register(0,212)
+        self.client.write_register(1,ratio)
 
 
     def read_status(self):
@@ -55,7 +55,7 @@ class GripperControllerWrapper:
         """
         try:
             # Modbus 요청 시 `slave=1`을 키워드 인자로 전달
-            registers = self.client.read_holding_registers(10, count=5, slave=1)
+            registers = self.client.read_holding_registers(10, count=5)
             # 요청 실패 처리
             if not registers or registers.isError():
                 print("⚠️ 모터 상태 읽기 실패!")
