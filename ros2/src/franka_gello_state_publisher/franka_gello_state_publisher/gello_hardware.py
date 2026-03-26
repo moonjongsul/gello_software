@@ -80,7 +80,7 @@ class GelloHardware:
             [-3.0770, -0.1169],  # -176/-7 deg
             [-2.8763, 2.8763],  # -165/165 deg
             [0.4398, 4.6216],  # -25/265 deg
-            [-3.0508, 3.0508],  # -175/175 deg
+            [-0.6508, 3.7508],  # -37/217 deg
         ]
     )
     MID_JOINT_POSITIONS = JOINT_POSITION_LIMITS.mean(axis=1)
