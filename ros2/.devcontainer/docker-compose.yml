@@ -2,7 +2,7 @@ services:
   gello-ros2: 
     build: .
     privileged: true
-    restart: no
+    restart: unless-stopped
     network_mode: host
     init: true # Ensure signal forwarding to child processes
     stop_signal: SIGINT # ros2 launch needs SIGINT to shutdown gracefully

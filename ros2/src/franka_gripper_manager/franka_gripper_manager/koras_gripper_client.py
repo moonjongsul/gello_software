@@ -11,7 +11,7 @@ from std_msgs.msg import Float32
 
 from pymodbus.client import ModbusSerialClient
 
-DEFAULT_PORT = "/dev/ttyKoras"
+DEFAULT_PORT = "/dev/ttyUSB0"
 DEFAULT_BAUD = 115200
 DEFAULT_FORCE = 40.0    # 0 ~ 100 %
 DEFAULT_JOINT_STATES_TOPIC = "koras_gripper/joint_states"
@@ -105,18 +105,23 @@ class GripperClient(Node):
         self.timer = self.create_timer(timer_period, self.timer_callback, callback_group=self.group2)
 
     def _trigger_cb(self, msg: Float32) -> None:
-        trigger_command = float(msg.data)
+        trigger_command = float(msg.data) * 1000.0
+        trigger_command = int(trigger_command)
 
         self.gripper_client.set_motor_torque(self.force)
         self.gripper_client.set_finger_position(trigger_command)
 
     def timer_callback(self) -> None:
+        gripper_state = self.gripper_client.read_status()
+        # self.get_logger().info("Gripper state: {0}".format(gripper_state))
+        if gripper_state is None:
+            return
         msg = JointState()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.name = ['finger_joint']
-        msg.position = [self.gripper_client.gripper_state['finger_position']]
-        msg.velocity = [self.gripper_client.gripper_state['motor_velocity']]
-        msg.effort = [self.gripper_client.gripper_state['motor_current']]
+        msg.position = [float(gripper_state['finger_position'])]
+        msg.velocity = [float(gripper_state['motor_velocity'])]
+        msg.effort = [float(gripper_state['motor_current'])]
         self.joint_states_publisher.publish(msg)
     
 
