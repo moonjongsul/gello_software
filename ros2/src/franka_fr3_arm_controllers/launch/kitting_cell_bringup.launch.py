@@ -94,7 +94,7 @@ def generate_launch_description():
     return LaunchDescription([
         franka,
         TimerAction(period=3.0, actions=[gripper]),
-        TimerAction(period=1.0, actions=[orbbec_2]),
-        TimerAction(period=3.0, actions=[orbbec_1]),
+        TimerAction(period=1.0, actions=[orbbec_1]),   # primary: 먼저 시작
+        TimerAction(period=3.0, actions=[orbbec_2]),   # secondary: primary 준비 후 시작
         TimerAction(period=1.0, actions=[realsense]),
     ])
