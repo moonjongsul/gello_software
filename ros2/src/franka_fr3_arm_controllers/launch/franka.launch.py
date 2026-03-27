@@ -138,7 +138,8 @@ def generate_robot_nodes(context):
                 "stdout": "screen",
                 "stderr": "screen",
             },
-            on_exit=Shutdown(),
+            respawn=True,
+            respawn_delay=3.0,
         ),
         Node(
             package="joint_state_publisher",
