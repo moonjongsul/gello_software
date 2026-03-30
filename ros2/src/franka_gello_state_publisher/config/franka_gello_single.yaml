@@ -14,7 +14,7 @@ SINGLE:
   #          do not enable torque until an external 5V power supply is connected to the board's
   #          power terminal and the jumper is set to "VIN(DXL)". Using USB power for torque
   #          operation may damage your computer's USB port.
-  dynamixel_torque_enable: [     0,     1,     1,     0,     0,     0,     0,     0] # 1 on, 0 off
+  dynamixel_torque_enable: [     0,     0,     1,     0,     0,     0,     0,     0] # 1 on, 0 off
   dynamixel_goal_position: [   0.0,   0.0,   0.0, 1.571,   0.0, 1.571,     0,     0] # rad
   dynamixel_kp_p:          [    30,    60,     0,    30,     0,     0,     0,    50]
   dynamixel_kp_i:          [     0,     0,     0,     0,     0,     0,     0,     0]
