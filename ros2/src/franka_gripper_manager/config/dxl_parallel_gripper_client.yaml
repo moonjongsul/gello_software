@@ -1,0 +1,18 @@
+dxl_parallel_gripper_client:
+  ros__parameters:
+    # Serial port settings
+    port: "/dev/ttyUSB0"
+    baud: 57600
+
+    # Dynamixel motor settings
+    dxl_id: 1
+    dxl_min_position: 1200   # DXL step (gripper fully closed)
+    dxl_max_position: 2200   # DXL step (gripper fully open)
+    dxl_max_current: 600     # mA (Current-Based Position mode limit)
+
+    # ROS topic names
+    gripper_command_topic: "gripper/gripper_client/target_gripper_width_percent"
+    joint_states_topic: "dxl_parallel_gripper/joint_states"
+
+    # Force / torque ratio (0~100 %)
+    force: 40.0

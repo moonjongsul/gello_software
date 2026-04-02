@@ -27,6 +27,7 @@ setup(
             "franka_gripper_client = franka_gripper_manager.franka_gripper_client:main",
             "robotiq_gripper_client = franka_gripper_manager.robotiq_gripper_client:main",
             "koras_gripper_client = franka_gripper_manager.koras_gripper_client:main",
+            "dxl_parallel_gripper_client = franka_gripper_manager.dxl_parallel_gripper_client:main",
         ],
     },
 )
