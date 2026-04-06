@@ -189,7 +189,7 @@ class GripperClient(Node):
         self.joint_states_publisher = self.create_publisher(JointState, joint_states_topic, 10)
         self.gripper_command_subscriber = self.create_subscription(Float32, gripper_command_topic, self._trigger_cb, 10, callback_group=self.group1)
 
-        timer_period = 1.0 / 30.0  # 30Hz
+        timer_period = 1.0 / 200.0  # 30Hz
         self.timer = self.create_timer(timer_period, self.timer_callback, callback_group=self.group2)
 
     def _trigger_cb(self, msg: Float32) -> None:
