@@ -13,7 +13,7 @@ from pymodbus.client import ModbusSerialClient
 
 DEFAULT_PORT = "/dev/ttyUSB0"
 DEFAULT_BAUD = 115200
-DEFAULT_FORCE = 40.0    # 0 ~ 100 %
+DEFAULT_FORCE = 80.0    # 0 ~ 100 %
 DEFAULT_JOINT_STATES_TOPIC = "koras_gripper/joint_states"
 DEFAULT_GRIPPER_COMMAND_TOPIC = "gripper/gripper_client/target_gripper_width_percent"
 MIN_SEND_INTERVAL = 0.1   # 10Hz

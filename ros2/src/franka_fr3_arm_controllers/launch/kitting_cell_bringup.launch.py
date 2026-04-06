@@ -1,4 +1,3 @@
-# kaair_bringup.launch.py
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, TimerAction, GroupAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -16,7 +15,7 @@ def generate_launch_description():
     gripper = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             get_package_share_directory('franka_gripper_manager'),
-            '/launch/koras_gripper_client.launch.py'
+            '/launch/dxl_parallel_gripper_client.launch.py'
         ])
     )
 
@@ -27,6 +26,7 @@ def generate_launch_description():
         ]),
         launch_arguments={
             "camera_name": "front_view",
+            # "serial_number": "AY35C3200EM", # 카메라 시리얼 번호
             "usb_port": "2-2",
             "device_num": "2",
             "color_width": "1280",
@@ -54,6 +54,7 @@ def generate_launch_description():
         ]),
         launch_arguments={
             "camera_name": "side_view",
+            # "serial_number": "AY3794301V0", # 카메라 시리얼 번호
             "usb_port": "2-4",
             "device_num": "2",
             "color_width": "1280",
@@ -88,13 +89,15 @@ def generate_launch_description():
             'serial_no2':        "'_335122271613'",
             'enable_depth1':     'false',
             'enable_depth2':     'false',
+            'rotation_filter.enable2':   'true',
+            'rotation_filter.rotation2': '180.0',
         }.items()
     )
 
     return LaunchDescription([
         franka,
-        TimerAction(period=3.0, actions=[gripper]),
-        TimerAction(period=1.0, actions=[orbbec_1]),   # primary: 먼저 시작
-        TimerAction(period=3.0, actions=[orbbec_2]),   # secondary: primary 준비 후 시작
-        TimerAction(period=1.0, actions=[realsense]),
+        TimerAction(period=0.0, actions=[gripper]),
+        # TimerAction(period=2.0, actions=[orbbec_1]),   # primary: 먼저 시작
+        # TimerAction(period=4.0, actions=[orbbec_2]),   # secondary: primary 준비 후 시작
+        # TimerAction(period=6.0, actions=[realsense]),
     ])

@@ -14,5 +14,7 @@ dxl_parallel_gripper_client:
     gripper_command_topic: "gripper/gripper_client/target_gripper_width_percent"
     joint_states_topic: "dxl_parallel_gripper/joint_states"
 
-    # Force / torque ratio (0~100 %)
-    force: 40.0
+    # Control mode settings
+    control_mode: "continuous"    # "continuous" or "binary"
+    binary_threshold: 0.9       # only used when control_mode is "binary"
+    position_snap_threshold: 0.02  # 2% of the gripper width

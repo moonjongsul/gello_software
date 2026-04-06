@@ -17,10 +17,14 @@ except Exception:  # pragma: no cover
 
 DEFAULT_PORT = "/dev/ttyUSB0"
 DEFAULT_BAUD = 57600
-DEFAULT_FORCE = 40.0    # 0 ~ 100 %
 DEFAULT_JOINT_STATES_TOPIC = "dxl_parallel_gripper/joint_states"
 DEFAULT_GRIPPER_COMMAND_TOPIC = "gripper/gripper_client/target_gripper_width_percent"
 MIN_SEND_INTERVAL = 0.1   # 10Hz
+
+# control_mode: "continuous" → 0~1을 그리퍼 위치에 직접 매핑
+#               "binary"     → threshold 초과 시 열기, 이하 시 닫기
+DEFAULT_CONTROL_MODE = "continuous"
+DEFAULT_BINARY_THRESHOLD = 0.8
 
 DXL_ID = 1
 DXL_MIN_POSITION = 1200
@@ -138,7 +142,6 @@ class GripperClient(Node):
 
         self.declare_parameter("port", DEFAULT_PORT)
         self.declare_parameter("baud", DEFAULT_BAUD)
-        self.declare_parameter("force", DEFAULT_FORCE)
         self.declare_parameter("gripper_command_topic", DEFAULT_GRIPPER_COMMAND_TOPIC)
         self.declare_parameter("joint_states_topic", DEFAULT_JOINT_STATES_TOPIC)
         # Dynamixel parameters (overridable via launch)
@@ -146,22 +149,42 @@ class GripperClient(Node):
         self.declare_parameter("dxl_min_position", DXL_MIN_POSITION)
         self.declare_parameter("dxl_max_position", DXL_MAX_POSITION)
         self.declare_parameter("dxl_max_current", DXL_MAX_CURRENT)
+        # Control mode parameters
+        self.declare_parameter("control_mode", DEFAULT_CONTROL_MODE)
+        self.declare_parameter("binary_threshold", DEFAULT_BINARY_THRESHOLD)
+        self.declare_parameter("position_snap_threshold", 0.02)
 
         gripper_command_topic = self.get_parameter("gripper_command_topic").get_parameter_value().string_value
         joint_states_topic = self.get_parameter("joint_states_topic").get_parameter_value().string_value
         port = self.get_parameter("port").get_parameter_value().string_value
         baud = self.get_parameter("baud").get_parameter_value().integer_value
-        self.force = self.get_parameter("force").get_parameter_value().integer_value
         self.dxl_id = self.get_parameter("dxl_id").get_parameter_value().integer_value
         self.dxl_min = self.get_parameter("dxl_min_position").get_parameter_value().integer_value
         self.dxl_max = self.get_parameter("dxl_max_position").get_parameter_value().integer_value
         self.dxl_max_current = self.get_parameter("dxl_max_current").get_parameter_value().integer_value
+        self.control_mode = self.get_parameter("control_mode").get_parameter_value().string_value
+        self.binary_threshold = self.get_parameter("binary_threshold").get_parameter_value().double_value
+        self.position_snap_threshold = self.get_parameter("position_snap_threshold").get_parameter_value().double_value
+
+        if self.control_mode not in ("continuous", "binary"):
+            self.get_logger().warn(
+                f"Unknown control_mode '{self.control_mode}', falling back to 'continuous'."
+            )
+            self.control_mode = "continuous"
+
+        self.get_logger().info(
+            f"Gripper control_mode: '{self.control_mode}'"
+            + (f", binary_threshold: {self.binary_threshold}" if self.control_mode == "binary" else "")
+        )
 
         self.group1 = MutuallyExclusiveCallbackGroup()
         self.group2 = MutuallyExclusiveCallbackGroup()
 
         self.gripper_client = DynamixelController(port, baud, self.dxl_id, self.dxl_max_current)
         self.gripper_client.connect()
+        self.gripper_client.set_goal_position(self.dxl_min)
+        time.sleep(1)
+        self.gripper_client.set_goal_position(self.dxl_max)
 
         self.joint_states_publisher = self.create_publisher(JointState, joint_states_topic, 10)
         self.gripper_command_subscriber = self.create_subscription(Float32, gripper_command_topic, self._trigger_cb, 10, callback_group=self.group1)
@@ -171,11 +194,13 @@ class GripperClient(Node):
 
     def _trigger_cb(self, msg: Float32) -> None:
         raw = float(msg.data)
-        if raw < 0.0:
-            raw = 0.0
-        if raw > 1.0:
-            raw = 1.0
-        target = int(round(self.dxl_min + raw * (self.dxl_max - self.dxl_min)))
+        raw = max(0.0, min(1.0, raw))
+
+        if self.control_mode == "binary":
+            target = self.dxl_max if raw > self.binary_threshold else self.dxl_min
+        else:  # "continuous"
+            target = int(round(self.dxl_min + raw * (self.dxl_max - self.dxl_min)))
+
         try:
             self.gripper_client.set_goal_position(target)
         except Exception as e:
@@ -189,7 +214,14 @@ class GripperClient(Node):
         msg = JointState()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.name = ['finger_joint']
-        msg.position = [float(gripper_state['finger_position'])]
+        raw_pos = float(gripper_state['finger_position'])
+        normalized = (raw_pos - self.dxl_min) / (self.dxl_max - self.dxl_min)
+        normalized = max(0.0, min(1.0, normalized))
+        if normalized >= 1.0 - self.position_snap_threshold:
+            normalized = 1.0
+        elif normalized <= self.position_snap_threshold:
+            normalized = 0.0
+        msg.position = [normalized]
         msg.velocity = [float(gripper_state['motor_velocity'])]
         msg.effort = [-float(gripper_state['motor_current'])]
         self.joint_states_publisher.publish(msg)
