@@ -1,6 +1,10 @@
 # keep each top level section alphabetical
 # keep each item within the sections alphabetical
 
+build/
+install/
+log/
+
 # large files
 *.png
 *.gif

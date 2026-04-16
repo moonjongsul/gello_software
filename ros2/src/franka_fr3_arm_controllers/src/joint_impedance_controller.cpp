@@ -53,49 +53,51 @@ controller_interface::return_type JointImpedanceController::update(
     const rclcpp::Duration& /*period*/) {
   updateJointStates_();
   Vector7d q_goal;
-  Vector7d tau_d_calculated;
+
+  // Detect Gello disconnection: reset state machine so the robot holds its
+  // current position until Gello reconnects and a new smooth trajectory begins.
+  if (prev_gello_valid_ && !gello_position_values_valid_) {
+    q_hold_ = q_;
+    motion_generator_initialized_ = false;
+    move_to_start_position_finished_ = false;
+    RCLCPP_WARN(get_node()->get_logger(),
+                "Gello disconnected. Holding current position until reconnected.");
+  }
+  prev_gello_valid_ = gello_position_values_valid_;
 
   if (!motion_generator_initialized_) {
-    // After starting the controller we wait for valid joint states from the input topic
-    // Until we get valid joint states we will send zero torques to the robot
-    // to allow the user to reposition the robot
+    // Wait for valid Gello data. While waiting, hold the current position
+    // with impedance control instead of sending zero torques.
     motion_generator_initialized_ = initializeMotionGenerator_();
 
     if (!motion_generator_initialized_) {
+      q_goal = q_hold_;
+      auto tau_d = calculateTauDGains_(q_goal);
       for (int i = 0; i < num_joints; ++i) {
-        command_interfaces_[i].set_value(0.0);
+        command_interfaces_[i].set_value(tau_d(i));
       }
-
       return controller_interface::return_type::OK;
     }
   }
 
   if (!move_to_start_position_finished_) {
-    // We have received valid joint states and initialized the motion generator
-    // Now we move smoothly to the first joint position received from the input topic
+    // Smoothly move from the current robot position to the first Gello target.
     auto trajectory_time = this->get_node()->now() - start_time_;
     auto motion_generator_output = motion_generator_->getDesiredJointPositions(trajectory_time);
     move_to_start_position_finished_ = motion_generator_output.second;
-
     q_goal = motion_generator_output.first;
   }
 
   if (move_to_start_position_finished_) {
-    // After reaching the start position we follow the joint position from the input topic
-    // This is the normal operation mode of the controller
-    if (!gello_position_values_valid_) {
-      RCLCPP_FATAL(get_node()->get_logger(), "Timeout: No valid joint states received from Gello");
-      rclcpp::shutdown();  // Exit the node permanently
-    }
+    // Normal operation: directly follow the Gello joint positions.
     for (int i = 0; i < num_joints; ++i) {
       q_goal(i) = gello_position_values_[i];
     }
   }
 
-  tau_d_calculated = calculateTauDGains_(q_goal);
-
+  auto tau_d = calculateTauDGains_(q_goal);
   for (int i = 0; i < num_joints; ++i) {
-    command_interfaces_[i].set_value(tau_d_calculated(i));
+    command_interfaces_[i].set_value(tau_d(i));
   }
 
   return controller_interface::return_type::OK;
@@ -185,6 +187,11 @@ CallbackReturn JointImpedanceController::on_configure(
 
 CallbackReturn JointImpedanceController::on_activate(
     const rclcpp_lifecycle::State& /*previous_state*/) {
+  updateJointStates_();
+  q_hold_ = q_;
+  prev_gello_valid_ = false;
+  motion_generator_initialized_ = false;
+  move_to_start_position_finished_ = false;
   last_joint_state_time_ = get_node()->now();
   dq_filtered_.setZero();
   start_time_ = this->get_node()->now();
@@ -262,6 +269,7 @@ bool JointImpedanceController::initializeMotionGenerator_() {
 
   const double motion_generator_speed_factor = 0.2;
   motion_generator_ = std::make_unique<MotionGenerator>(motion_generator_speed_factor, q_, q_goal);
+  start_time_ = this->get_node()->now();
   return true;
 }
 
