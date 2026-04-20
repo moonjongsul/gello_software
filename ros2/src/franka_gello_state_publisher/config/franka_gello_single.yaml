@@ -3,7 +3,7 @@
 
 SINGLE:
   namespace: ""
-  com_port: "usb-FTDI_USB__-__Serial_Converter_FTA7NM3S-if00-port0" # REPLACE WITH YOUR ID
+  com_port: "usb-ROBOTIS_OpenRB-150_5DB62D665157375037202020FF0D0817-if00" # REPLACE WITH YOUR ID
   num_arm_joints: 7
   joint_signs: [1, 1, 1, 1, 1, -1, 1]
   gripper: true

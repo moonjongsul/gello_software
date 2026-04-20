@@ -72,7 +72,9 @@ class GelloPublisher(Node):
         arm_joint_states.name = JOINT_NAMES
         arm_joint_states.header.frame_id = "fr3_link0"
         arm_joint_states.position = gello_arm_joints.tolist()
-
+        arm_joint_states.velocity = [0.0] * 7
+        arm_joint_states.effort = [0.0] * 7
+        
         gripper_joint_states = Float32()
         gripper_joint_states.data = gripper_position
         self.arm_joint_publisher.publish(arm_joint_states)
