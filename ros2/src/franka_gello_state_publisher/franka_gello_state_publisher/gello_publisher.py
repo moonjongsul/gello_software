@@ -76,7 +76,11 @@ class GelloPublisher(Node):
         arm_joint_states.effort = [0.0] * 7
         
         gripper_joint_states = Float32()
-        gripper_joint_states.data = gripper_position
+        if gripper_position <=0.7:
+            _gripper_position=0.0
+        else:
+            _gripper_position=1.0
+        gripper_joint_states.data = _gripper_position
         self.arm_joint_publisher.publish(arm_joint_states)
         self.gripper_joint_publisher.publish(gripper_joint_states)
 
