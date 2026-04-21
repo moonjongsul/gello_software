@@ -6,6 +6,9 @@
       joint_impedance_controller:
         type: franka_fr3_arm_controllers/JointImpedanceController
 
+      cartesian_impedance_controller:
+        type: franka_fr3_arm_controllers/CartesianImpedanceController
+
       joint_state_broadcaster:
         type: joint_state_broadcaster/JointStateBroadcaster
 
@@ -32,3 +35,29 @@
         - 10.0
         - 10.0
         - 5.0
+
+/**:
+  cartesian_impedance_controller:
+    ros__parameters:
+      k_alpha: 0.99
+      k_gains:
+        - 240.0
+        - 240.0
+        - 240.0
+        - 240.0
+        - 100.0
+        - 60.0
+        - 20.0
+      d_gains:
+        - 20.0
+        - 20.0
+        - 20.0
+        - 10.0
+        - 10.0
+        - 10.0
+        - 5.0
+      target_pose_topic: "/max/goal_pose"
+      max_linear_velocity: 0.25   # m/s
+      max_angular_velocity: 1.0   # rad/s
+      ik_max_iter: 150
+      ik_eps: 1.0e-5

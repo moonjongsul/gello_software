@@ -6,4 +6,12 @@
             The JointImpedanceController single arm controller for gello
         </description>
     </class>
+    <class name="franka_fr3_arm_controllers/CartesianImpedanceController"
+        type="franka_fr3_arm_controllers::CartesianImpedanceController"
+        base_class_type="controller_interface::ControllerInterface">
+        <description>
+            Cartesian-space target + KDL IK feeding the same joint-space impedance law
+            as JointImpedanceController. Subscribes to a PoseStamped target in base frame.
+        </description>
+    </class>
 </library>
