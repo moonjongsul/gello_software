@@ -57,6 +57,7 @@
         - 10.0
         - 5.0
       target_pose_topic: "/max/goal_pose"
+      tip_link: "fr3_link8"
       max_linear_velocity: 0.25   # m/s
       max_angular_velocity: 1.0   # rad/s
       ik_max_iter: 150

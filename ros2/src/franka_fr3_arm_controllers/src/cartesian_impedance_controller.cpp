@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <cmath>
 #include <exception>
 #include <string>
@@ -97,7 +98,8 @@ controller_interface::return_type CartesianImpedanceController::update(
 CallbackReturn CartesianImpedanceController::on_init() {
   try {
     auto_declare<std::string>("arm_id", "");
-    auto_declare<bool>("load_gripper", false);
+    auto_declare<std::string>("load_gripper", "false");
+    auto_declare<std::string>("tip_link", "");
     auto_declare<std::vector<double>>("k_gains", {});
     auto_declare<std::vector<double>>("d_gains", {});
     auto_declare<double>("k_alpha", 0.99);
@@ -116,7 +118,12 @@ CallbackReturn CartesianImpedanceController::on_init() {
 CallbackReturn CartesianImpedanceController::on_configure(
     const rclcpp_lifecycle::State& /*previous_state*/) {
   arm_id_ = get_node()->get_parameter("arm_id").as_string();
-  load_gripper_ = get_node()->get_parameter("load_gripper").as_bool();
+  {
+    auto load_gripper_str = get_node()->get_parameter("load_gripper").as_string();
+    std::transform(load_gripper_str.begin(), load_gripper_str.end(), load_gripper_str.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    load_gripper_ = (load_gripper_str == "true" || load_gripper_str == "1");
+  }
 
   namespace_prefix_ = get_node()->get_namespace();
   if (namespace_prefix_ == "/" || namespace_prefix_.empty()) {
@@ -149,7 +156,12 @@ CallbackReturn CartesianImpedanceController::on_configure(
   ik_eps_ = get_node()->get_parameter("ik_eps").as_double();
 
   base_link_ = namespace_prefix_ + arm_id_ + "_link0";
-  tip_link_ = namespace_prefix_ + arm_id_ + (load_gripper_ ? "_hand_tcp" : "_link8");
+  auto tip_link_param = get_node()->get_parameter("tip_link").as_string();
+  if (!tip_link_param.empty()) {
+    tip_link_ = tip_link_param;
+  } else {
+    tip_link_ = namespace_prefix_ + arm_id_ + (load_gripper_ ? "_hand_tcp" : "_link8");
+  }
 
   auto parameters_client =
       std::make_shared<rclcpp::AsyncParametersClient>(get_node(), "robot_state_publisher");
