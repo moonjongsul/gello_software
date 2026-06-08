@@ -1,13 +1,76 @@
-picking_cell:
+/**:
   ros__parameters:
+    vision:
+      publish_list:
+        - "vis_output:/picking_cell/box_obj/detection_result/compressed"
+      service_name: "/picking_cell/pick"
+        
+
     camera:
-      ros_domain_id: 1
-      serial: '_335122271195'
-      profile: '640x480x30'
-      T_cam2base:
-        rows: 4
-        cols: 4
-        data: [0.9999914180,  0.0041207178,  0.0004294619, -0.0092547112,
-                -0.0041202151,  0.9999908330, -0.0011649602, -0.1017725280,
-                -0.0004342584,  0.0011631808,  0.9999992290,  0.0771543528,
-                0.0000000000,  0.0000000000,  0.0000000000,  1.0000000000]
+      ros_domain_id: 0
+      launch_args:
+        camera_name: ur10_wrist
+        camera_namespace: picking_cell
+        serial_no: '_335122271195'
+        # rgb_camera.color_profile: '640x480x30'
+        # depth_module.depth_profile: '640x480x30'
+      subscribe_list:
+        - "color:/picking_cell/ur10_wrist/color/image_rect_raw/compressed"
+        - "depth:/picking_cell/ur10_wrist/depth/image_rect_raw/compressedDepth"
+        - "info:/picking_cell/ur10_wrist/color/camera_info"
+      T_cam2tcp: [0.9999914180,  0.0041207178,  0.0004294619, -0.0092547112,
+                  -0.0041202151,  0.9999908330, -0.0011649602, -0.1017725280,
+                  -0.0004342584,  0.0011631808,  0.9999992290,  0.0771543528,
+                  0.0000000000,  0.0000000000,  0.0000000000,  1.0000000000]
+      box_roi: 
+        xy_min: [130, 20]
+        xy_max: [710, 470]
+
+    robot:
+      gripper_usb_port: "/dev/ttyUSB1"
+      launch_args:
+        ur_type: "ur10e"
+        robot_ip: "172.16.0.5"
+      ros_domain_id: 0
+      subscribe_list:
+        - "joint_state:/ur10e/joint_states"
+        - "tcp_pose:/ur10e/tcp_pose_broadcaster/pose"
+        - "state:/ur10e/io_and_status_controller/robot_program_running"
+      publish_list:
+        - "script_pub:/ur10e/urscript_interface/script_command"
+      joint_list:
+        - ur10e_shoulder_pan_joint
+        - ur10e_shoulder_lift_joint
+        - ur10e_elbow_joint
+        - ur10e_wrist_1_joint
+        - ur10e_wrist_2_joint
+        - ur10e_wrist_3_joint
+      pose_frame_id: base_link
+      pose:
+        home:  # joint space, degree
+          - 76.45
+          - -120.88
+          - 108.0
+          - 283.0
+          - -90.0
+          - -13.8
+        place:  # joint space, degree
+          # - 
+          # - 
+          # - 
+          # - 
+          # - 
+          # - 
+          - 76.45
+          - -120.88
+          - 108.0
+          - 283.0
+          - -90.0
+          - -13.8
+        place_wp:
+          - 142.85
+          - -84.3
+          - 73.41
+          - 281.0
+          - -90.0
+          - 52.58

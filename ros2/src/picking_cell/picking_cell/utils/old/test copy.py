@@ -9,7 +9,7 @@ from datetime import datetime
 from scipy.spatial.transform import Rotation as R
 import functools
 
-from Ur10_Controller_Node import Ur10_Controller_Node
+from picking_cell.picking_cell.utils.Ur10_Controller_Node import Ur10_Controller_Node
 from Realsense_Node import Realsense_Node
 
 # ==========================================

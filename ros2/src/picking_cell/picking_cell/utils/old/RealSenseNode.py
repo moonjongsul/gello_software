@@ -6,9 +6,11 @@ from cv_bridge import CvBridge
 import cv2
 import numpy as np
 
-class Realsense_Node(Node):
+
+class RealSenseWrapper(Node):
     def __init__(self):
-        super().__init__('realsense_vision_node')
+        super().__init__('realsense_node')
+
         self.bridge = CvBridge()
         
         self.current_color_frame = None
