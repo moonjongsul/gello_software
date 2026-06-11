@@ -3,8 +3,14 @@
     vision:
       publish_list:
         - "vis_output:/picking_cell/box_obj/detection_result/compressed"
-      service_name: "/picking_cell/pick"
-        
+      service_name: 
+        - "/picking_cell/pick"    # start picking sequence request
+        - "/picking_cell/ur10e/movej"   # move to "location" -> 'home', 'place', 'place_wp'
+        - "/picking_cell/ur10e/movel"
+        - "/picking_cell/ur10e/movet"
+        - "/picking_cell/ur10e/gripper_width"
+      obj2cam: 0.455
+      obj2tool: 0.24
 
     camera:
       ros_domain_id: 0
@@ -25,9 +31,14 @@
       box_roi: 
         xy_min: [130, 20]
         xy_max: [710, 470]
-
+    
     robot:
-      gripper_usb_port: "/dev/ttyUSB1"
+      gripper:
+        usb_port: "/dev/ttyUSB1"
+        pick_width: 30  # mm
+        pick_offset:
+          x: -0.002
+          y: 0.02
       launch_args:
         ur_type: "ur10e"
         robot_ip: "172.16.0.5"
@@ -46,6 +57,9 @@
         - ur10e_wrist_2_joint
         - ur10e_wrist_3_joint
       pose_frame_id: base_link
+      speed:
+        acc: 1.0
+        vel: 0.5
       pose:
         home:  # joint space, degree
           - 76.45

@@ -1,9 +1,12 @@
 from types import SimpleNamespace
-
+import time
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from sensor_msgs.msg import CompressedImage
 from std_srvs.srv import Trigger
+from picking_cell_interfaces.srv import MoveJ, MoveL, GripperWidth
 import cv2
 import numpy as np
 
@@ -24,13 +27,32 @@ class BoxPicking(Node):
         self.camera = RealSenseWrapper(self.cfg.camera, node=self)
         
         self.T_cam2tcp = np.array(self.cfg.camera.T_cam2tcp).reshape(4, 4)
+        
+        self.robot_acc = self.cfg.robot.speed.acc
+        self.robot_vel = self.cfg.robot.speed.vel
+        
+        self.cb_group = ReentrantCallbackGroup()
+
         # Trigger service: any call kicks off a full box-picking cycle. No
         # request data; the response just reports success/failure.
         self.pick_srv = self.create_service(
-            Trigger, self.cfg.vision.service_name, self.srv_pick_cb
+            Trigger, self.cfg.vision.service_name[0], self.srv_pick_cb,
+            callback_group=self.cb_group,
         )
+        # MoveJ service: request carries a target pose name (string) such as
+        # 'home', 'place', 'place_wp'; the response reports success/failure.
+        self.movej_srv = self.create_service(
+            MoveJ, self.cfg.vision.service_name[1], self.srv_movej_cb,
+            callback_group=self.cb_group,
+        )
+        # self.movel_srv = self.create_service(
+        #     MoveL, self.cfg.vision.service_name[2], self.srv_movel_cb
+        # )
         
-        self.get_logger().info(f"{self.cfg.vision.publish_list[0].split(':')[1]}")
+        self.gripper_srv = self.create_service(
+            GripperWidth, self.cfg.vision.service_name[4], self.srv_gripper_cb,
+            callback_group=self.cb_group,
+        )
         
         self.pub_vis_output = self.create_publisher(CompressedImage, self.cfg.vision.publish_list[0].split(':')[1], 10)
         self.get_logger().info(
@@ -49,34 +71,113 @@ class BoxPicking(Node):
             response.message = str(e)
         return response
 
+    def srv_movej_cb(self, request, response):
+        """Move the robot to the requested named pose (request.location)."""
+        location = request.location
+        try:
+            self.ur10.movej(location, wait=False)
+            response.success = True
+            response.message = f"moved to '{location}'"
+        except Exception as e:
+            self.get_logger().error(f"MoveJ error: {e}")
+            response.success = False
+            response.message = str(e)
+        return response
+    
+    def srv_gripper_cb(self, request, response):
+        width = request.width
+        try:
+            width = int(width)
+        except:
+            width = str(width)
+        try:
+            self.ur10.set_gripper(width)
+            response.success = True
+            response.message = f"gripper width: {width}"
+        except Exception as e:
+            self.get_logger().error(f"Gripper error: {e}")
+            response.success = False
+            response.message = str(e)
+        return response
+
     def _run_pick_cycle(self):
-        pick_success = False
-        """Object detection + robot motion for one pick. Returns bool success."""
-        # TODO: wire up real vision + robot motion here.
-        self.get_logger().info("HAHAHAHHAHA")
-        
-        self.ur10.movej('home')
-        
+        """ home 위치로 이동 """
+        self.ur10.movej('home', acc=self.robot_acc * 1.5, vel=self.robot_vel * 2, wait=True)
+        time.sleep(0.5)
+
+        """ 물체 인식 """
         color, depth = self.camera.get_data()
-        
-        circles, vis_output = self.process_vision(color, depth)
-        
+        circles, vis_output = self.detect_circle(color)
+
         vis_output_msg = self.arr_to_compressed_msg(vis_output)
         if vis_output_msg is not None:
             self.pub_vis_output.publish(vis_output_msg)
+
+        if circles is None:
+            self.get_logger().info("No circle detected; aborting pick cycle.")
+            return False
+
+        """ 좌표변환 """
+        target_pixel = circles[0]
+        coord_cam = self.camera.get_3d_coordinate(
+            target_pixel[0], target_pixel[1], self.cfg.vision.obj2cam
+        )
+        if coord_cam is None:
+            self.get_logger().warn("get_3d_coordinate returned None; aborting.")
+            return False
         
-        if circles is not None:
-            target_pixel = circles[0]
-            self.get_logger().info(f"{target_pixel}")
-               
-                
-            return pick_success
-        else:
-            return pick_success
+        P_cam = np.array([*coord_cam, 1.0])
+        P_tcp = self.T_cam2tcp @ P_cam
+        dx, dy = float(P_tcp[0]), float(P_tcp[1])
+        self.get_logger().info(
+            f"pixel={target_pixel[:2]} P_cam={coord_cam} -> dx={dx:.4f} dy={dy:.4f}"
+        )
+        
+        """ 그리퍼 조금 열기 """
+        self.ur10.set_gripper(self.cfg.robot.gripper.pick_width)
+        
+        """ 물체 위치로 이동 (하강 X)"""        
+        if not self.ur10.movel_rel([dx+self.cfg.robot.gripper.pick_offset.x,
+                                    dy+self.cfg.robot.gripper.pick_offset.y,
+                                    0.0,
+                                    0, 0, 1.5708], frame='tool',
+                                   acc=self.robot_acc, vel=self.robot_vel, wait=True):
+            self.get_logger().warn("XY centering move did not converge.")
+            return False
+
+        """ 피킹하러 내려감 """        
+        descend = -float(self.cfg.vision.obj2tool)
+        if not self.ur10.movel_rel([0.0, 0.0, -descend+0.02, 0, 0, 0], frame='tool',
+                                   acc=self.robot_acc, vel=self.robot_vel, wait=True):
+            self.get_logger().warn("Descent move did not converge.")
+            return False
+        
+        """ 그리퍼 파지 """
+        self.ur10.set_gripper(3)
+        time.sleep(1)
+
+        """ 그리퍼 파지 후 z축 상승 + drop 위치 이동 """
+        self.ur10.movel_rel([0.0, 0.0, descend-0.05, 0, 0, 0], frame='tool',
+                            acc=self.robot_acc*0.8, vel=self.robot_vel*0.8, wait=True)
+        self.ur10.move_blend([
+            ('cs', [0.400, -0.335, 0.750, 2.221, 2.221, 0]),
+            ('cs', [0.667, -0.280, 0.470, 1.939, 1.939, 0.498])
+            ], acc=self.robot_acc, vel=self.robot_vel, wait=True)
+
+        self.ur10.set_gripper(self.cfg.robot.gripper.pick_width)
+        time.sleep(0.3)
+        
+        """ home 복귀. blending 모션 or movej -> movej가 빠름"""
+        self.ur10.move_blend([
+            ('cs', [0.400, -0.335, 0.750, 2.221, 2.221, 0]),
+            ('js', 'home')
+            ],acc=self.robot_acc*2, vel=self.robot_vel*2, wait=True)
+        # self.ur10.movej('home', acc=self.robot_acc, vel=self.robot_vel, wait=True)
+        return True
 
 
-    def process_vision(self, color, depth):
-        if color is None or depth is None: 
+    def detect_circle(self, color):
+        if color is None:
             return None
         
         h, w = color.shape[:2]
@@ -102,8 +203,11 @@ class BoxPicking(Node):
         vis_output = color.copy()
         cv2.rectangle(vis_output, roi_xy_min, roi_xy_max, (255, 0, 0), 2)
         try:
-            for i in res_circles:
-                cv2.circle(vis_output, (i[0], i[1]), i[2], (0, 255, 0), 2)
+            for idx, i in enumerate(res_circles):
+                if idx == 0:
+                    cv2.circle(vis_output, (i[0], i[1]), i[2], (0, 0, 255), 2)
+                else:
+                    cv2.circle(vis_output, (i[0], i[1]), i[2], (0, 255, 0), 2)
         except:
             pass
         
@@ -158,11 +262,17 @@ def main(args=None):
     rclpy.init(args=args)
     
     node = BoxPicking()
+    # MultiThreadedExecutor so the long-running pick service can block on
+    # movel_rel waits while pose/joint subscription callbacks keep running on
+    # other threads (see the ReentrantCallbackGroup in __init__).
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except Exception as e:
         node.get_logger().info(f"Launch error: {e}")
     finally:
+        executor.shutdown()
         node.destroy_node()
         rclpy.shutdown()
         
