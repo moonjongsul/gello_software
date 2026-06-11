@@ -3,6 +3,7 @@
 
 SINGLE:
   namespace: ""
+  # search command: ls /dev/serial/by-id
   com_port: "usb-ROBOTIS_OpenRB-150_5DB62D665157375037202020FF0D0817-if00" # REPLACE WITH YOUR ID
   num_arm_joints: 7
   joint_signs: [1, 1, 1, 1, 1, -1, 1]

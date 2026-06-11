@@ -147,13 +147,13 @@ class BoxPicking(Node):
 
         """ 피킹하러 내려감 """        
         descend = -float(self.cfg.vision.obj2tool)
-        if not self.ur10.movel_rel([0.0, 0.0, -descend+0.02, 0, 0, 0], frame='tool',
+        if not self.ur10.movel_rel([0.0, 0.0, -descend+0.005, 0, 0, 0], frame='tool',
                                    acc=self.robot_acc, vel=self.robot_vel, wait=True):
             self.get_logger().warn("Descent move did not converge.")
             return False
         
         """ 그리퍼 파지 """
-        self.ur10.set_gripper(3)
+        self.ur10.set_gripper(1)
         time.sleep(1)
 
         """ 그리퍼 파지 후 z축 상승 + drop 위치 이동 """

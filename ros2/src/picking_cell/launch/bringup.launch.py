@@ -82,7 +82,7 @@ def _setup(context, *args, **kwargs):
         parameters=[config_path],
     )
     # return [ur_control_launch]
-    return [realsense_launch, ur_control_launch]#, box_picking_node]
+    return [realsense_launch, ur_control_launch, box_picking_node]
 
 
 def generate_launch_description():
