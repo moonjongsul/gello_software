@@ -1,6 +1,7 @@
 /**:
   ros__parameters:
     vision:
+      ros_domain_id: 3
       publish_list:
         - "vis_output:/picking_cell/box_obj/detection_result/compressed"
       service_name: 
@@ -13,7 +14,7 @@
       obj2tool: 0.24
 
     camera:
-      ros_domain_id: 0
+      ros_domain_id: 3
       launch_args:
         camera_name: ur10_wrist
         camera_namespace: picking_cell
@@ -42,7 +43,7 @@
       launch_args:
         ur_type: "ur10e"
         robot_ip: "172.16.0.5"
-      ros_domain_id: 0
+      ros_domain_id: 3
       subscribe_list:
         - "joint_state:/ur10e/joint_states"
         - "tcp_pose:/ur10e/tcp_pose_broadcaster/pose"

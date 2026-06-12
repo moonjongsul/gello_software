@@ -5,12 +5,29 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    GroupAction,
     IncludeLaunchDescription,
     OpaqueFunction,
+    SetEnvironmentVariable,
 )
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+
+def _domain_group(actions, domain_id):
+    """Wrap ``actions`` so they run under the given ROS_DOMAIN_ID.
+
+    ``SetEnvironmentVariable`` inside a ``GroupAction`` is scoped to that group,
+    so every node launched within (including nodes from included launch files)
+    inherits this ROS_DOMAIN_ID without affecting the rest of the launch.
+    """
+    if domain_id is None:
+        return GroupAction(actions)
+    return GroupAction([
+        SetEnvironmentVariable('ROS_DOMAIN_ID', str(domain_id)),
+        *actions,
+    ])
 
 
 def _load_ros_parameters(config_path):
@@ -39,6 +56,13 @@ def _setup(context, *args, **kwargs):
 
     camera_args = _stringify_args(params.get('camera', {}).get('launch_args', {}))
     robot_args = _stringify_args(params.get('robot', {}).get('launch_args', {}))
+
+    # Per-component ROS_DOMAIN_ID from the config. Each component (camera, robot,
+    # vision/box_picking) is launched under its own domain so it only talks to
+    # peers on the same domain.
+    camera_domain = params.get('camera', {}).get('ros_domain_id')
+    robot_domain = params.get('robot', {}).get('ros_domain_id')
+    vision_domain = params.get('vision', {}).get('ros_domain_id')
 
     # Use ur_type (e.g. "ur10e") as the tf_prefix so joint/link/TF names are
     # namespaced (ur10e_shoulder_link, ...). UR expects a trailing underscore.
@@ -74,15 +98,30 @@ def _setup(context, *args, **kwargs):
         launch_arguments=robot_args.items(),
     )
 
-    # box picking node
+    # box picking node (vision)
     box_picking_node = Node(
         package='picking_cell',
         executable='box_picking',
         output='screen',
         parameters=[config_path],
     )
-    # return [ur_control_launch]
-    return [realsense_launch, ur_control_launch, box_picking_node]
+
+    # rosbridge websocket (runs under the vision ROS_DOMAIN_ID). Equivalent to:
+    #   ros2 run rosbridge_server rosbridge_websocket \
+    #     --ros-args -p default_call_service_timeout:=60.0
+    rosbridge_node = Node(
+        package='rosbridge_server',
+        executable='rosbridge_websocket',
+        name='rosbridge_websocket',
+        output='screen',
+        parameters=[{'default_call_service_timeout': 60.0}],
+    )
+
+    return [
+        _domain_group([realsense_launch], camera_domain),
+        _domain_group([ur_control_launch], robot_domain),
+        _domain_group([box_picking_node, rosbridge_node], vision_domain),
+    ]
 
 
 def generate_launch_description():

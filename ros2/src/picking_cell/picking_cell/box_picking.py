@@ -3,10 +3,10 @@ import time
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
-from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
+from rclpy.callback_groups import ReentrantCallbackGroup
 from sensor_msgs.msg import CompressedImage
 from std_srvs.srv import Trigger
-from picking_cell_interfaces.srv import MoveJ, MoveL, GripperWidth
+from picking_cell_interfaces.srv import MoveJ, GripperWidth
 import cv2
 import numpy as np
 
@@ -45,9 +45,6 @@ class BoxPicking(Node):
             MoveJ, self.cfg.vision.service_name[1], self.srv_movej_cb,
             callback_group=self.cb_group,
         )
-        # self.movel_srv = self.create_service(
-        #     MoveL, self.cfg.vision.service_name[2], self.srv_movel_cb
-        # )
         
         self.gripper_srv = self.create_service(
             GripperWidth, self.cfg.vision.service_name[4], self.srv_gripper_cb,
@@ -161,7 +158,8 @@ class BoxPicking(Node):
                             acc=self.robot_acc*0.8, vel=self.robot_vel*0.8, wait=True)
         self.ur10.move_blend([
             ('cs', [0.400, -0.335, 0.750, 2.221, 2.221, 0]),
-            ('cs', [0.667, -0.280, 0.470, 1.939, 1.939, 0.498])
+            # ('cs', [0.667, -0.280, 0.470, 1.939, 1.939, 0.498])
+            ('cs', [0.667, -0.280, 0.470, 1.939, 1.939, 0.52])
             ], acc=self.robot_acc, vel=self.robot_vel, wait=True)
 
         self.ur10.set_gripper(self.cfg.robot.gripper.pick_width)
