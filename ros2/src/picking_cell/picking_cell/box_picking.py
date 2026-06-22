@@ -159,13 +159,13 @@ class BoxPicking(Node):
         self.ur10.move_blend([
             ('cs', [0.400, -0.335, 0.750, 2.221, 2.221, 0]),
             # ('cs', [0.667, -0.280, 0.470, 1.939, 1.939, 0.498])
-            ('cs', [0.667, -0.280, 0.470, 1.939, 1.939, 0.52])
+            ('cs', [0.630, -0.280, 0.550, 1.939, 1.939, 0.52])
             ], acc=self.robot_acc, vel=self.robot_vel, wait=True)
 
         self.ur10.set_gripper(self.cfg.robot.gripper.pick_width)
         time.sleep(0.3)
         
-        """ home 복귀. blending 모션 or movej -> movej가 빠름"""
+        """ home 복귀. blending 모션 or movej -> movbej가 빠름"""
         self.ur10.move_blend([
             ('cs', [0.400, -0.335, 0.750, 2.221, 2.221, 0]),
             ('js', 'home')
