@@ -1,4 +1,4 @@
-string location   # target pose name -> 'home', 'place', 'place_wp'
+string location
 ---
 bool success
 string message
