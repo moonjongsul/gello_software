@@ -7,9 +7,17 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from sensor_msgs.msg import CompressedImage
 from std_srvs.srv import Trigger
 from picking_cell_interfaces.srv import MoveJ, GripperWidth
+from picking_cell_interfaces.srv import MoveL
+try:
+    # Use a dedicated MoveT service type when the interface package provides it.
+    from picking_cell_interfaces.srv import MoveT
+except ImportError:
+    # Backward-compatible fallback: MoveL and MoveT use the same
+    # string location / bool success / string message layout.
+    MoveT = MoveL
 import cv2
 import numpy as np
-
+import json
 from picking_cell.utils.realsense_wrapper import RealSenseWrapper
 from picking_cell.utils.ur10_wrapper import Ur10ControlWrapper
 
@@ -45,7 +53,22 @@ class BoxPicking(Node):
             MoveJ, self.cfg.vision.service_name[1], self.srv_movej_cb,
             callback_group=self.cb_group,
         )
-        
+
+        # MoveL service: request carries a target pose name (string) such as
+        # 'home', 'place', 'place_wp'; the response reports success/failure.
+        self.movel_srv = self.create_service(
+            MoveL, self.cfg.vision.service_name[2], self.srv_movel_cb,
+            callback_group=self.cb_group,
+        )
+
+        # MoveT service: relative Cartesian move. A plain six-element JSON
+        # list is interpreted in the current tool/TCP frame. A JSON object can
+        # explicitly select "tool" or "base" using its frame field.
+        self.movet_srv = self.create_service(
+            MoveT, self.cfg.vision.service_name[3], self.srv_movet_cb,
+            callback_group=self.cb_group,
+        )
+
         self.gripper_srv = self.create_service(
             GripperWidth, self.cfg.vision.service_name[4], self.srv_gripper_cb,
             callback_group=self.cb_group,
@@ -67,20 +90,158 @@ class BoxPicking(Node):
             response.success = False
             response.message = str(e)
         return response
-
+    
     def srv_movej_cb(self, request, response):
-        """Move the robot to the requested named pose (request.location)."""
+        """설정 파일에 등록된 이름으로 MoveJ를 실행한다."""
         location = request.location
+
         try:
-            self.ur10.movej(location, wait=False)
+            self.ur10.movej(
+                location,
+                wait=False,
+            )
+
             response.success = True
             response.message = f"moved to '{location}'"
-        except Exception as e:
-            self.get_logger().error(f"MoveJ error: {e}")
+
+        except Exception as error:
+            self.get_logger().error(
+                f"MoveJ error: {error}"
+            )
             response.success = False
-            response.message = str(e)
+            response.message = str(error)
+
         return response
+
     
+    def srv_movel_cb(self, request, response):
+        try:
+            self.get_logger().info(
+                f"MoveL raw request: {request.location}"
+            )
+
+            target_pose = json.loads(request.location)
+
+            if not isinstance(target_pose, list) or len(target_pose) != 6:
+                raise ValueError(
+                    "MoveL 좌표는 "
+                    "[x, y, z, rx, ry, rz] 6개여야 합니다."
+                )
+
+            target_pose = [
+                float(value)
+                for value in target_pose
+            ]
+
+            self.get_logger().info(
+                f"MoveL parsed target: {target_pose}"
+            )
+
+            result = self.ur10.movel(
+                target_pose,
+                acc=self.robot_acc,
+                vel=self.robot_vel,
+                wait=True,
+            )
+
+            response.success = (
+                True if result is None else bool(result)
+            )
+
+            response.message = (
+                f"MoveL completed: {target_pose}"
+                if response.success
+                else f"MoveL failed: {target_pose}"
+            )
+
+        except Exception as error:
+            self.get_logger().error(
+                f"MoveL error: {error}"
+            )
+            response.success = False
+            response.message = str(error)
+
+        return response
+
+
+    def srv_movet_cb(self, request, response):
+        """Execute a relative TCP move.
+
+        Supported request.location JSON forms:
+          [dx, dy, dz, drx, dry, drz]
+          {"delta": [dx, dy, dz, drx, dry, drz], "frame": "tool"}
+
+        Translation uses metres and rotation uses a rotation vector in radians.
+        The default frame is the current tool/TCP frame.
+        """
+        try:
+            self.get_logger().info(
+                f"MoveT raw request: {request.location}"
+            )
+
+            payload = json.loads(request.location)
+            frame = "tool"
+
+            if isinstance(payload, dict):
+                delta = payload.get("delta", payload.get("location"))
+                frame = str(payload.get("frame", "tool")).strip().lower()
+            else:
+                delta = payload
+
+            if not isinstance(delta, list) or len(delta) != 6:
+                raise ValueError(
+                    "MoveT 변화량은 [dx, dy, dz, drx, dry, drz] "
+                    "6개여야 합니다."
+                )
+
+            if frame not in ("tool", "base"):
+                raise ValueError(
+                    "MoveT frame은 'tool' 또는 'base'여야 합니다."
+                )
+
+            delta = [float(value) for value in delta]
+
+            # Reject obviously unsafe or accidental one-shot commands.
+            translation_distance = float(np.linalg.norm(delta[:3]))
+            rotation_distance = float(np.linalg.norm(delta[3:]))
+            if translation_distance > 0.50:
+                raise ValueError(
+                    f"MoveT 단일 이동 거리가 너무 큽니다: "
+                    f"{translation_distance:.3f} m > 0.500 m"
+                )
+            if rotation_distance > np.pi + 1e-6:
+                raise ValueError(
+                    f"MoveT 단일 회전량이 너무 큽니다: "
+                    f"{rotation_distance:.3f} rad > pi"
+                )
+
+            self.get_logger().info(
+                f"MoveT parsed delta: {delta}, frame={frame}"
+            )
+
+            result = self.ur10.movet(
+                delta,
+                frame=frame,
+                acc=self.robot_acc,
+                vel=self.robot_vel,
+                wait=True,
+            )
+
+            response.success = bool(result)
+            response.message = (
+                f"MoveT completed: delta={delta}, frame={frame}"
+                if response.success
+                else f"MoveT failed: delta={delta}, frame={frame}"
+            )
+
+        except Exception as error:
+            self.get_logger().error(f"MoveT error: {error}")
+            response.success = False
+            response.message = str(error)
+
+        return response
+
+
     def srv_gripper_cb(self, request, response):
         width = request.width
         try:
@@ -277,5 +438,4 @@ def main(args=None):
         
 if __name__ == "__main__":
     main()
-    
     

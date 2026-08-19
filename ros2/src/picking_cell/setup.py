@@ -29,6 +29,7 @@ setup(
     entry_points={
         'console_scripts': [
             'box_picking = picking_cell.box_picking:main',
+            'tray_picking = picking_cell.tray_picking:main',
         ],
     },
 )

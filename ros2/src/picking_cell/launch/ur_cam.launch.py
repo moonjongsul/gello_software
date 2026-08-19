@@ -62,6 +62,9 @@ def _setup(context, *args, **kwargs):
     # peers on the same domain.
     camera_domain = params.get('camera', {}).get('ros_domain_id')
     robot_domain = params.get('robot', {}).get('ros_domain_id')
+    
+    # 🌟 [추가된 부분 1] vision_domain 변수 정의
+    vision_domain = params.get('vision', {}).get('ros_domain_id')
 
     # Use ur_type (e.g. "ur10e") as the tf_prefix so joint/link/TF names are
     # namespaced (ur10e_shoulder_link, ...). UR expects a trailing underscore.
@@ -97,10 +100,27 @@ def _setup(context, *args, **kwargs):
         launch_arguments=robot_args.items(),
     )
 
+    # 🌟 [추가된 부분 2] box_picking_node와 rosbridge_node 정의
+    box_picking_node = Node(
+        package='picking_cell',
+        executable='box_picking',
+        output='screen',
+        parameters=[config_path],
+    )
+
+    rosbridge_node = Node(
+        package='rosbridge_server',
+        executable='rosbridge_websocket',
+        name='rosbridge_websocket',
+        output='screen',
+        parameters=[{'default_call_service_timeout': 60.0}],
+    )
+
     return [
         _domain_group([realsense_launch], camera_domain),
         _domain_group([ur_control_launch], robot_domain),
-        # _domain_group([box_picking_node, rosbridge_node], vision_domain),
+        # 🌟 [수정된 부분 3] 주석 해제하여 vision 노드도 함께 실행
+        _domain_group([box_picking_node, rosbridge_node], vision_domain),
     ]
 
 
