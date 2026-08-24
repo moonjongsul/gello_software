@@ -22,6 +22,7 @@ observing anywhere else would mean the recorded action and the recorded
 observation refer to different points on the robot.
 """
 
+import math
 import threading
 
 import PyKDL
@@ -140,7 +141,24 @@ class EefStatePublisher(Node):
         # The URDF ends at the flange; the TCP is an offset from it that
         # only the controller knows, so it is applied on top of the chain.
         self.declare_parameter('flange_link', 'link_eef')
-        self.declare_parameter('frame_id', 'link_base')
+        # Names the frame the output is expressed in. Not link_base once
+        # base_yaw_offset_deg is non-zero -- the controller's base frame
+        # has no URDF link, so it gets its own name rather than borrowing
+        # one that /tf would resolve to a different orientation.
+        self.declare_parameter('frame_id', 'xarm_base')
+
+        # The controller's own base frame is rotated with respect to the
+        # URDF's link_base: the same arm pose reads as x=+248mm here and
+        # y=-248mm in RobotMsg.pose, with a matching -90 deg of yaw. That
+        # is a fixed frame difference, not an error, but the recorded
+        # observation has to agree with whatever frame the rest of the
+        # cell reasons in -- so this rotation puts the output in the
+        # controller's frame, the one RobotMsg.pose and the teleop
+        # velocity command already use.
+        #
+        # Set to 0.0 to publish in the URDF link_base frame instead, which
+        # is what /tf and the camera extrinsics use.
+        self.declare_parameter('base_yaw_offset_deg', -90.0)
 
         # Take the offset the controller reports rather than trusting a
         # config value that can silently drift out of sync with what the
@@ -160,6 +178,10 @@ class EefStatePublisher(Node):
         self.base_link = get('base_link').value
         self.flange_link = get('flange_link').value
         self.frame_id = get('frame_id').value
+
+        yaw_deg = float(get('base_yaw_offset_deg').value)
+        self._base_rot = PyKDL.Rotation.RotZ(math.radians(yaw_deg))
+        self._base_yaw_deg = yaw_deg
 
         self.use_reported_offset = bool(get('use_reported_offset').value)
 
@@ -351,6 +373,17 @@ class EefStatePublisher(Node):
 
     def _publish(self, stamp, tcp, twist):
         linear, angular = twist
+
+        # Rotate out of the URDF base frame into the controller's. A pure
+        # rotation about the shared origin, so the position rotates, the
+        # orientation is pre-multiplied, and BOTH halves of the twist go
+        # with them -- rotating only the linear part would leave the
+        # angular velocity describing a different frame than the pose it
+        # accompanies.
+        if self._base_yaw_deg:
+            tcp = PyKDL.Frame(self._base_rot) * tcp
+            linear = self._base_rot * linear
+            angular = self._base_rot * angular
 
         pose = PoseStamped()
         # Reuse the driver's stamp rather than "now": this state describes

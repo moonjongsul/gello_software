@@ -28,7 +28,27 @@ eef_state_publisher:
     # ------------------------------------------------------------------
     base_link: link_base
     flange_link: link_eef
-    frame_id: link_base
+
+    # ------------------------------------------------------------------
+    # Base frame
+    #
+    # The controller's base frame is rotated -90 deg about Z relative to
+    # the URDF's link_base: the same arm pose reads x=+248mm through the
+    # URDF and y=-248mm in RobotMsg.pose. Rotating the output here makes
+    # it agree with RobotMsg.pose and with the frame the teleop velocity
+    # command is given in, so a recorded action and a recorded
+    # observation describe the same axes.
+    #
+    # Set base_yaw_offset_deg to 0.0 to publish in the URDF link_base
+    # frame instead -- that is the frame /tf and the camera extrinsics
+    # use, so pick that if the observations are consumed alongside them.
+    #
+    # frame_id only names the frame; it does not change the numbers. Keep
+    # it consistent with base_yaw_offset_deg: "xarm_base" for the
+    # controller frame, "link_base" when the offset is 0.
+    # ------------------------------------------------------------------
+    base_yaw_offset_deg: -90.0
+    frame_id: xarm_base
 
     # ------------------------------------------------------------------
     # TCP offset
