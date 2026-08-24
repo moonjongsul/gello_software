@@ -11,6 +11,7 @@ find_package(std_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/RecorderStatus.msg"
+  "msg/TeleopAction.msg"
   "srv/RecordCommand.srv"
   DEPENDENCIES std_msgs
 )
