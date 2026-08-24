@@ -36,10 +36,16 @@ uint8 IDLE               = 2
 
 uint8 space
 
-# [vx, vy, vz, wx, wy, wz] exactly as sent to vc_set_cartesian_velocity:
-# linear in mm/s, angular in rad/s. Millimetres because that is the
-# controller's unit -- converting here would mean the recorded action no
-# longer matches the command that produced the motion.
+# [vx, vy, vz, wx, wy, wz] -- linear in m/s, angular in rad/s.
+#
+# SI, not the controller's millimetres: the observation side publishes
+# geometry_msgs/TwistStamped, which is metres by definition and cannot be
+# changed, so the action is converted to match. An action and an
+# observation of the same motion therefore carry the same numbers, and a
+# frame built from both needs no per-field scaling.
+#
+# The teleop node divides by 1000 on the way in; what reaches
+# vc_set_cartesian_velocity is still mm/s.
 float64[6] cartesian_velocity
 
 # Frame the velocity is expressed in: false = robot base, true = tool.
