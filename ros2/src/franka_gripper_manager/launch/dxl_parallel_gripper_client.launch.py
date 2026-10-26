@@ -21,15 +21,23 @@ def generate_launch_description():
         description="Full path to the dxl_parallel_gripper_client config YAML file",
     )
 
+    # Must match the top-level key in the config YAML
+    node_name_arg = DeclareLaunchArgument(
+        "node_name",
+        default_value="dxl_parallel_gripper_client",
+        description="Node name (must match the top-level key in config_file)",
+    )
+
     node = Node(
         package="franka_gripper_manager",
         executable="dxl_parallel_gripper_client",
-        name="dxl_parallel_gripper_client",
+        name=LaunchConfiguration("node_name"),
         output="screen",
         parameters=[LaunchConfiguration("config_file")],
     )
 
     return LaunchDescription([
         config_arg,
+        node_name_arg,
         node,
     ])
